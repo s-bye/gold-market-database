@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 from langchain_groq import ChatGroq
 from langchain_community.utilities import SQLDatabase
@@ -73,8 +74,25 @@ agent = create_sql_agent(
     handle_parsing_errors=True,
 )
 
-# Telegram
+SUBSCRIBERS_FILE = Path(__file__).parent / "subscribers.txt"
+
+def save_subscriber(chat_id: int):
+    ids = set()
+    if SUBSCRIBERS_FILE.exists():
+        ids = set(SUBSCRIBERS_FILE.read_text().split())
+    if str(chat_id) not in ids:
+        with SUBSCRIBERS_FILE.open("a") as f:
+            f.write(f"{chat_id}\n")
+
+async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    save_subscriber(update.message.chat_id)
+    await update.message.reply_text(
+        "👋 Hello! I'm a gold market analyst bot.\n"
+        "Ask me anything about gold prices, macro indicators, or market events."
+    )
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    save_subscriber(update.message.chat_id)
     question = update.message.text
     await update.message.reply_text("Thinking...")
 
@@ -82,7 +100,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result["output"])
 
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-app.add_handler(MessageHandler(filters.TEXT, handle_message))
+app.add_handler(CommandHandler("start", handle_start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 print("Started")
 app.run_polling(drop_pending_updates=True)
