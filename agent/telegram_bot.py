@@ -108,6 +108,21 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Ask me anything about gold prices, macro indicators, or market events."
     )
 
+def format_thought_chain(intermediate_steps: list) -> str:
+    if not intermediate_steps:
+        return ""
+    parts = ["<b>Agent reasoning chain:</b>"]
+    for i, (action, observation) in enumerate(intermediate_steps, 1):
+        log = action.log.strip()
+        obs = str(observation).strip()
+        if len(obs) > 400:
+            obs = obs[:400] + "…"
+        parts.append(f"\n<b>Step {i}</b>\n<pre>{_escape_html(log)}</pre>\n<b>Observation:</b> <code>{_escape_html(obs)}</code>")
+    return "\n".join(parts)
+
+def _escape_html(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_subscriber(update.message.chat_id)
     question = update.message.text
@@ -115,6 +130,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     result = agent.invoke({"input": question})
     await update.message.reply_text(result["output"])
+
+    thought_chain = format_thought_chain(result.get("intermediate_steps", []))
+    if thought_chain:
+        if len(thought_chain) > 4096:
+            thought_chain = thought_chain[:4090] + "\n…"
+        await update.message.reply_text(thought_chain, parse_mode="HTML")
 
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 app.add_handler(CommandHandler("start", handle_start))
